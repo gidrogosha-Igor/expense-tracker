@@ -313,9 +313,8 @@ td {
   <div class="right-panel">
     <select id="chartPeriodSelect">
       <option value="all">Всё время</option>
-      <option value="today">Сегодня</option>
-      <option value="week">7 дней</option>
-      <option value="month">Этот месяц</option>
+      <option value="lastMonth">Прошлый месяц</option>
+      <option value="thisMonth">Этот месяц</option>
     </select>
 
     <select id="chartStyleSelect">
@@ -456,23 +455,30 @@ function renderSummary(){
   });
 }
 
+// --- ИЗМЕНЕНИЯ: ФИЛЬТР ПО ПЕРИОДУ
 function getFilteredExpenses(){
   const period = chartPeriodSelect.value;
-  if(period==='all') return expenses;
-
   const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
+
+  if(period==='all') return expenses;
 
   return expenses.filter(e=>{
     const d = new Date(e.date);
-    if(period==='today') return e.date===todayStr;
-    if(period==='week'){
-      const diff = (now - d)/(1000*60*60*24);
-      return diff>=0 && diff<=7;
+
+    if(period==='thisMonth'){
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     }
-    if(period==='month'){
-      return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+
+    if(period==='lastMonth'){
+      let lastMonth = now.getMonth() - 1;
+      let year = now.getFullYear();
+      if(lastMonth < 0){
+        lastMonth = 11;
+        year -= 1;
+      }
+      return d.getFullYear() === year && d.getMonth() === lastMonth;
     }
+
     return true;
   });
 }
@@ -534,10 +540,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 </script>
 <script>
-
 let appReady = false;
 
-// --- УНИКАЛЬНЫЙ ПОЛЬЗОВАТЕЛЬ
 let userId = localStorage.getItem("userId");
 if(!userId){
   userId = crypto.randomUUID();
@@ -546,7 +550,6 @@ if(!userId){
 
 const userRef = db.ref("users/" + userId);
 
-// --- БЛОКИРУЕМ РЕНДЕР ПОКА НЕ ЗАГРУЗИЛОСЬ
 const originalRenderExpenses = window.renderExpenses;
 window.renderExpenses = function(){
   if(!appReady) return;
@@ -559,9 +562,7 @@ window.renderCategoryOptions = function(){
   originalRenderCategoryOptions();
 };
 
-// --- ЗАГРУЗКА ИЗ ОБЛАКА
 async function loadFromCloud(){
-
   try{
     const snap = await userRef.get();
 
@@ -588,13 +589,11 @@ async function loadFromCloud(){
     console.log("Cloud load error:", e);
   }
 
-  // теперь можно рисовать
   appReady = true;
   originalRenderCategoryOptions();
   originalRenderExpenses();
 }
 
-// --- СОХРАНЕНИЕ В ОБЛАКО
 function saveToCloud(){
   userRef.set({
     expenses: expenses,
@@ -603,18 +602,8 @@ function saveToCloud(){
   });
 }
 
-// --- ПЕРЕХВАТ LOCALSTORAGE
 const originalSetItem = localStorage.setItem;
 localStorage.setItem = function(key,value){
   originalSetItem.apply(this, arguments);
 
-  if(key==="expenses"||key==="categories"||key==="pageTitle"){
-    saveToCloud();
-  }
-};
-
-// --- СТАРТ
-loadFromCloud();
-
-</script>
-</html>
+  if(key==="expenses"||key==="categories"||key==="page
