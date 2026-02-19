@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Учёт расходов</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root {
+  --bg-color: #f4f6f8;
+  --panel-bg: #fff;
+  --text-color: #000;
+  --input-bg: #fff;
+  --input-text: #000;
+  --btn-bg: #4caf50;
+  --btn-text: #fff;
+  --btn-active-border: 3px solid #000;
+}
+
+body.dark {
+  --bg-color: #121212;
+  --panel-bg: #1e1e1e;
+  --text-color: #fff;
+  --input-bg: #2c2c2c;
+  --input-text: #fff;
+  --btn-bg: #76c893;
+  --btn-text: #000;
+  --btn-active-border: 3px solid #fff;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: Arial, sans-serif;
+}
+
+.container {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+  gap: 20px;
+}
+
+.left-panel, .right-panel {
+  flex: 1;
+  overflow: hidden;
+  background: var(--panel-bg);
+  padding: 20px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+}
+
+.header-row h1 {
+  margin: 0;
+  display: inline-block;
+}
+
+.header-row button {
+  margin-left: 8px;
+}
+
+.theme-buttons {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 5px;
+}
+
+.theme-buttons button {
+  padding: 6px 10px;
+  font-size: 16px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+}
+
+.theme-buttons button.active {
+  border: var(--btn-active-border);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+input, select, button {
+  padding: 8px;
+  font-size: 14px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+button {
+  cursor: pointer;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: none;
+  border-radius: 4px;
+}
+
+.date-wrapper {
+  position: relative;
+}
+
+.date-wrapper button {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  height: calc(100% - 4px);
+}
+
+#hiddenDate {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
+.expense-container {
+  flex: 0 0 auto;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 50px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+  word-break: break-word;
+}
+
+.expense-row {
+  height: 20px;
+}
+
+#expenseTable tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+#expenseTable thead, #expenseTable tbody {
+  display: block;
+}
+
+.summary-container {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.action-btn {
+  margin-left: 5px;
+  cursor: pointer;
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  position: relative;
+}
+
+#chartStyleSelect {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 5px;
+  font-size: 14px;
+}
+
+#leftContent {
+  margin-top: 50px;
+}
+
+#inputBlock {
+  margin-bottom: 50px;
+}
+
+#categorySelectWrapper {
+  position: relative;
+  flex: 1;
+}
+
+#categorySelectWrapper input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+}
+
+.category-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--input-bg);
+  border: 1px solid #ccc;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+
+.category-item {
+  padding: 5px 10px;
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.category-item:hover {
+  background: #e0e0e0;
+}
+
+.category-item .delete-cat {
+  color: red;
+  font-weight: bold;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+  <div class="left-panel">
+    <div class="header-row">
+      <h1 id="pageTitle"></h1>
+      <button id="editTitleBtn" title="Изменить название">✏️</button>
+    </div>
+
+    <div class="theme-buttons">
+      <button id="lightThemeBtn">🌞</button>
+      <button id="darkThemeBtn">🌙</button>
+    </div>
+
+    <div id="leftContent">
+      <div id="inputBlock">
+        <div class="row">
+          <div class="date-wrapper">
+            <input type="text" id="dateInput" placeholder="Дата">
+            <button type="button" id="calendarBtn">📅</button>
+            <input type="date" id="hiddenDate">
+          </div>
+
+          <input type="number" id="amountInput" placeholder="Сумма">
+
+          <div id="categorySelectWrapper">
+            <input type="text" id="categoryInput" placeholder="Выберите категорию">
+            <div class="category-dropdown" id="categoryDropdown"></div>
+          </div>
+
+          <button onclick="addExpense()">Добавить</button>
+        </div>
+      </div>
+
+      <div class="expense-container">
+        <table>
+          <tbody id="expenseTable"></tbody>
+        </table>
+      </div>
+
+      <div class="summary-container">
+        <table id="summaryTable">
+          <thead>
+            <tr>
+              <th>Категория</th>
+              <th>Сумма</th>
+              <th>Процент</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <!-- Стили диаграммы на русском -->
+    <select id="chartStyleSelect">
+      <option value="pie">Круговая</option>
+      <option value="doughnut">Пончиковая</option>
+      <option value="bar">Столбчатая</option>
+      <option value="line">Линейная</option>
+    </select>
+    <canvas id="chart" style="width:90%;height:90%;"></canvas>
+  </div>
+</div>
+
+<script>
+const DEFAULT_CATEGORIES = ['Продукты','Мобильная связь и интернет','Автомобиль','Транспорт','Уход за собой','Прочее','Питомцы','Жильё'];
+let categories = JSON.parse(localStorage.getItem('categories')) || [...DEFAULT_CATEGORIES];
+localStorage.setItem('categories', JSON.stringify(categories));
+let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
+
+const categoryInput = document.getElementById('categoryInput');
+const categoryDropdown = document.getElementById('categoryDropdown');
+const expenseTable = document.getElementById('expenseTable');
+const summaryTable = document.getElementById('summaryTable').querySelector('tbody');
+const dateInput = document.getElementById('dateInput');
+const hiddenDate = document.getElementById('hiddenDate');
+const chartCanvas = document.getElementById('chart');
+const chartStyleSelect = document.getElementById('chartStyleSelect');
+const lightThemeBtn = document.getElementById('lightThemeBtn');
+const darkThemeBtn = document.getElementById('darkThemeBtn');
+
+const pageTitle = document.getElementById('pageTitle');
+const editTitleBtn = document.getElementById('editTitleBtn');
+
+let chart = null;
+
+// Заголовок
+pageTitle.textContent = localStorage.getItem('pageTitle') || 'Учёт расходов';
+editTitleBtn.onclick = () => {
+  const newTitle = prompt('Введите новое название:', pageTitle.textContent);
+  if (newTitle !== null && newTitle.trim() !== '') {
+    pageTitle.textContent = newTitle;
+    localStorage.setItem('pageTitle', newTitle);
+  }
+};
+
+// Календарь
+document.getElementById('calendarBtn').onclick = () => {
+  if(hiddenDate.showPicker) hiddenDate.showPicker();
+  else { hiddenDate.focus(); hiddenDate.click(); }
+};
+hiddenDate.onchange = () => { dateInput.value = hiddenDate.value; };
+
+// Рендер категорий
+function renderCategoryOptions() {
+  categoryDropdown.innerHTML = '';
+  categories.forEach(cat => {
+    const div = document.createElement('div');
+    div.className='category-item';
+
+    const spanName = document.createElement('span');
+    spanName.textContent = cat;
+    spanName.onclick = () => { categoryInput.value = cat; categoryDropdown.style.display='none'; };
+
+    const spanDel = document.createElement('span');
+    spanDel.textContent='❌';
+    spanDel.className='delete-cat';
+    spanDel.onclick = (e) => {
+      e.stopPropagation();
+      if(expenses.some(exp=>exp.category===cat)){
+        alert('Эта категория используется в расходах и не может быть удалена.');
+        return;
+      }
+      if(confirm(`Вы уверены, что хотите удалить категорию "${cat}"?`)){
+        categories = categories.filter(c=>c!==cat);
+        localStorage.setItem('categories', JSON.stringify(categories));
+        renderCategoryOptions();
+      }
+    };
+
+    div.appendChild(spanName);
+    div.appendChild(spanDel);
+    categoryDropdown.appendChild(div);
+  });
+}
+
+// Show dropdown
+categoryInput.onfocus = () => categoryDropdown.style.display='block';
+categoryInput.oninput = () => { renderCategoryOptions(); categoryDropdown.style.display='block'; };
+
+// Скрытие при клике вне
+document.addEventListener('click', function(e){
+  if(!document.getElementById('categorySelectWrapper').contains(e.target)){
+    categoryDropdown.style.display='none';
+  }
+});
+
+// Добавление расхода
+function addExpense(){
+  const date=dateInput.value.trim();
+  const amount=Number(amountInput.value);
+  let category=categoryInput.value.trim();
+  if(!date||!amount||!category) return;
+  if(!categories.includes(category)){
+    categories.push(category);
+    localStorage.setItem('categories', JSON.stringify(categories));
+    renderCategoryOptions();
+  }
+  expenses.push({date,category,amount});
+  localStorage.setItem('expenses', JSON.stringify(expenses));
+  dateInput.value=''; amountInput.value=''; categoryInput.value='';
+  renderExpenses();
+}
+
+// Expenses
+function renderExpenses(){
+  expenseTable.innerHTML='';
+  expenses.forEach((e,index)=>{
+    const tr=document.createElement('tr');
+    tr.className='expense-row';
+    tr.innerHTML=`
+      <td>${e.date}</td>
+      <td>${e.category}</td>
+      <td>${e.amount}</td>
+      <td>
+        <button class="action-btn" onclick="editExpense(${index})">✏️</button>
+        <button class="action-btn" onclick="deleteExpense(${index})">❌</button>
+      </td>
+    `;
+    expenseTable.appendChild(tr);
+  });
+  renderSummary();
+  renderChart();
+}
+
+function renderSummary(){
+  summaryTable.innerHTML='';
+  const sums={};
+  let total=0;
+  expenses.forEach(e=>{ sums[e.category]=(sums[e.category]||0)+e.amount; total+=e.amount; });
+  Object.entries(sums).forEach(([cat,sum])=>{
+    const tr=document.createElement('tr');
+    const percent=total?((sum/total)*100).toFixed(1):0;
+    tr.innerHTML=`<td>${cat}</td><td>${sum}</td><td>${percent}%</td>`;
+    summaryTable.appendChild(tr);
+  });
+}
+
+// Chart rendering
+function renderChart(){
+  const sums={};
+  expenses.forEach(e=>{ sums[e.category]=(sums[e.category]||0)+e.amount; });
+  if(chart) chart.destroy();
+  chart=new Chart(chartCanvas,{
+    type: chartStyleSelect.value,
+    data:{labels:Object.keys(sums),datasets:[{data:Object.values(sums),backgroundColor:['#4caf50','#2196f3','#ff9800','#f44336','#9c27b0','#00bcd4','#ffeb3b','#795548']}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom'}}}
+  });
+}
+
+// Update chart on style change
+chartStyleSelect.onchange = renderChart;
+
+function deleteExpense(index){ expenses.splice(index,1); localStorage.setItem('expenses', JSON.stringify(expenses)); renderExpenses(); }
+function editExpense(index){
+  const e=expenses[index];
+  const newDate=prompt("Изменить дату:", e.date); if(newDate!==null)e.date=newDate;
+  const newCategory=prompt("Изменить категорию:", e.category); 
+  if(newCategory!==null){ if(!categories.includes(newCategory)){ categories.push(newCategory); localStorage.setItem('categories',JSON.stringify(categories)); renderCategoryOptions(); } e.category=newCategory;}
+  const newAmount=prompt("Изменить сумму:", e.amount); if(newAmount!==null)e.amount=Number(newAmount);
+  localStorage.setItem('expenses',JSON.stringify(expenses)); renderExpenses();
+}
+
+// Themes
+function applyTheme(theme){
+  if(theme==='dark') document.body.classList.add('dark');
+  else document.body.classList.remove('dark');
+  localStorage.setItem('theme',theme);
+  lightThemeBtn.classList.toggle('active', !document.body.classList.contains('dark'));
+  darkThemeBtn.classList.toggle('active', document.body.classList.contains('dark'));
+}
+lightThemeBtn.onclick=()=>applyTheme('light');
+darkThemeBtn.onclick=()=>applyTheme('dark');
+applyTheme(localStorage.getItem('theme')||'light');
+
+/* ===== INIT ===== */
+renderCategoryOptions();
+renderExpenses();
+</script>
+</body>
+</html>
