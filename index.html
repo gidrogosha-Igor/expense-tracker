@@ -197,6 +197,14 @@ td {
   font-size: 14px;
 }
 
+#chartPeriodSelect {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px;
+  font-size: 14px;
+}
+
 #leftContent {
   margin-top: 50px;
 }
@@ -303,7 +311,13 @@ td {
   </div>
 
   <div class="right-panel">
-    <!-- Стили диаграммы на русском -->
+    <select id="chartPeriodSelect">
+      <option value="all">Всё время</option>
+      <option value="today">Сегодня</option>
+      <option value="week">7 дней</option>
+      <option value="month">Этот месяц</option>
+    </select>
+
     <select id="chartStyleSelect">
       <option value="pie">Круговая</option>
       <option value="doughnut">Пончиковая</option>
@@ -328,6 +342,7 @@ const dateInput = document.getElementById('dateInput');
 const hiddenDate = document.getElementById('hiddenDate');
 const chartCanvas = document.getElementById('chart');
 const chartStyleSelect = document.getElementById('chartStyleSelect');
+const chartPeriodSelect = document.getElementById('chartPeriodSelect');
 const lightThemeBtn = document.getElementById('lightThemeBtn');
 const darkThemeBtn = document.getElementById('darkThemeBtn');
 
@@ -336,7 +351,6 @@ const editTitleBtn = document.getElementById('editTitleBtn');
 
 let chart = null;
 
-// Заголовок
 pageTitle.textContent = localStorage.getItem('pageTitle') || 'Учёт расходов';
 editTitleBtn.onclick = () => {
   const newTitle = prompt('Введите новое название:', pageTitle.textContent);
@@ -346,14 +360,12 @@ editTitleBtn.onclick = () => {
   }
 };
 
-// Календарь
 document.getElementById('calendarBtn').onclick = () => {
   if(hiddenDate.showPicker) hiddenDate.showPicker();
   else { hiddenDate.focus(); hiddenDate.click(); }
 };
 hiddenDate.onchange = () => { dateInput.value = hiddenDate.value; };
 
-// Рендер категорий
 function renderCategoryOptions() {
   categoryDropdown.innerHTML = '';
   categories.forEach(cat => {
@@ -386,18 +398,15 @@ function renderCategoryOptions() {
   });
 }
 
-// Show dropdown
 categoryInput.onfocus = () => categoryDropdown.style.display='block';
 categoryInput.oninput = () => { renderCategoryOptions(); categoryDropdown.style.display='block'; };
 
-// Скрытие при клике вне
 document.addEventListener('click', function(e){
   if(!document.getElementById('categorySelectWrapper').contains(e.target)){
     categoryDropdown.style.display='none';
   }
 });
 
-// Добавление расхода
 function addExpense(){
   const date=dateInput.value.trim();
   const amount=Number(amountInput.value);
@@ -414,7 +423,6 @@ function addExpense(){
   renderExpenses();
 }
 
-// Expenses
 function renderExpenses(){
   expenseTable.innerHTML='';
   expenses.forEach((e,index)=>{
@@ -448,10 +456,31 @@ function renderSummary(){
   });
 }
 
-// Chart rendering
+function getFilteredExpenses(){
+  const period = chartPeriodSelect.value;
+  if(period==='all') return expenses;
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+
+  return expenses.filter(e=>{
+    const d = new Date(e.date);
+    if(period==='today') return e.date===todayStr;
+    if(period==='week'){
+      const diff = (now - d)/(1000*60*60*24);
+      return diff>=0 && diff<=7;
+    }
+    if(period==='month'){
+      return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+    }
+    return true;
+  });
+}
+
 function renderChart(){
+  const filtered = getFilteredExpenses();
   const sums={};
-  expenses.forEach(e=>{ sums[e.category]=(sums[e.category]||0)+e.amount; });
+  filtered.forEach(e=>{ sums[e.category]=(sums[e.category]||0)+e.amount; });
   if(chart) chart.destroy();
   chart=new Chart(chartCanvas,{
     type: chartStyleSelect.value,
@@ -460,8 +489,8 @@ function renderChart(){
   });
 }
 
-// Update chart on style change
 chartStyleSelect.onchange = renderChart;
+chartPeriodSelect.onchange = renderChart;
 
 function deleteExpense(index){ expenses.splice(index,1); localStorage.setItem('expenses', JSON.stringify(expenses)); renderExpenses(); }
 function editExpense(index){
@@ -473,7 +502,6 @@ function editExpense(index){
   localStorage.setItem('expenses',JSON.stringify(expenses)); renderExpenses();
 }
 
-// Themes
 function applyTheme(theme){
   if(theme==='dark') document.body.classList.add('dark');
   else document.body.classList.remove('dark');
@@ -485,9 +513,108 @@ lightThemeBtn.onclick=()=>applyTheme('light');
 darkThemeBtn.onclick=()=>applyTheme('dark');
 applyTheme(localStorage.getItem('theme')||'light');
 
-/* ===== INIT ===== */
 renderCategoryOptions();
 renderExpenses();
 </script>
 </body>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAtIZdw_myclm2sv9vy3ewvwZVqFumims8",
+  authDomain: "expenses-tracker-dab3e.firebaseapp.com",
+  databaseURL: "https://expenses-tracker-dab3e-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "expenses-tracker-dab3e",
+  storageBucket: "expenses-tracker-dab3e.appspot.com",
+  messagingSenderId: "1001523377067",
+  appId: "1:1001523377067:web:382dfc10ac5865491098ee"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+</script>
+<script>
+
+let appReady = false;
+
+// --- УНИКАЛЬНЫЙ ПОЛЬЗОВАТЕЛЬ
+let userId = localStorage.getItem("userId");
+if(!userId){
+  userId = crypto.randomUUID();
+  localStorage.setItem("userId", userId);
+}
+
+const userRef = db.ref("users/" + userId);
+
+// --- БЛОКИРУЕМ РЕНДЕР ПОКА НЕ ЗАГРУЗИЛОСЬ
+const originalRenderExpenses = window.renderExpenses;
+window.renderExpenses = function(){
+  if(!appReady) return;
+  originalRenderExpenses();
+};
+
+const originalRenderCategoryOptions = window.renderCategoryOptions;
+window.renderCategoryOptions = function(){
+  if(!appReady) return;
+  originalRenderCategoryOptions();
+};
+
+// --- ЗАГРУЗКА ИЗ ОБЛАКА
+async function loadFromCloud(){
+
+  try{
+    const snap = await userRef.get();
+
+    if(snap.exists()){
+      const data = snap.val();
+
+      if(data.expenses){
+        localStorage.setItem('expenses', JSON.stringify(data.expenses));
+        expenses = data.expenses;
+      }
+
+      if(data.categories){
+        localStorage.setItem('categories', JSON.stringify(data.categories));
+        categories = data.categories;
+      }
+
+      if(data.pageTitle){
+        localStorage.setItem('pageTitle', data.pageTitle);
+        pageTitle.textContent = data.pageTitle;
+      }
+    }
+
+  }catch(e){
+    console.log("Cloud load error:", e);
+  }
+
+  // теперь можно рисовать
+  appReady = true;
+  originalRenderCategoryOptions();
+  originalRenderExpenses();
+}
+
+// --- СОХРАНЕНИЕ В ОБЛАКО
+function saveToCloud(){
+  userRef.set({
+    expenses: expenses,
+    categories: categories,
+    pageTitle: localStorage.getItem("pageTitle") || "Учёт расходов"
+  });
+}
+
+// --- ПЕРЕХВАТ LOCALSTORAGE
+const originalSetItem = localStorage.setItem;
+localStorage.setItem = function(key,value){
+  originalSetItem.apply(this, arguments);
+
+  if(key==="expenses"||key==="categories"||key==="pageTitle"){
+    saveToCloud();
+  }
+};
+
+// --- СТАРТ
+loadFromCloud();
+
+</script>
 </html>
